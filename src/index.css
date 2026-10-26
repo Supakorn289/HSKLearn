@@ -1,14 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Prompt:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
+  :root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+
+  html {
+    /* Prevent rubber banding on iOS/Android while keeping fluid content scrolling */
+    overscroll-behavior-y: none;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     font-family: 'Prompt', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     user-select: none;
+    -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    overscroll-behavior-y: none;
+    min-height: 100dvh;
   }
 }
 
-/* 3D Transform Utilities for Flashcards */
+/* ========================================================= */
+/* Neo-Brutalism Utility Classes (Hard Shadows & Tactile UI) */
+/* ========================================================= */
+.neo-shadow-sm {
+  box-shadow: 2px 2px 0px 0px #0f172a;
+}
+:where(.dark, .dark *) .neo-shadow-sm {
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+.neo-shadow {
+  box-shadow: 3px 3px 0px 0px #0f172a;
+}
+@media (min-width: 640px) {
+  .neo-shadow {
+    box-shadow: 4px 4px 0px 0px #0f172a;
+  }
+}
+:where(.dark, .dark *) .neo-shadow {
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+@media (min-width: 640px) {
+  :where(.dark, .dark *) .neo-shadow {
+    box-shadow: 4px 4px 0px 0px #000000;
+  }
+}
+
+.neo-shadow-lg {
+  box-shadow: 5px 5px 0px 0px #0f172a;
+}
+@media (min-width: 640px) {
+  .neo-shadow-lg {
+    box-shadow: 6px 6px 0px 0px #0f172a;
+  }
+}
+:where(.dark, .dark *) .neo-shadow-lg {
+  box-shadow: 5px 5px 0px 0px #000000;
+}
+@media (min-width: 640px) {
+  :where(.dark, .dark *) .neo-shadow-lg {
+    box-shadow: 6px 6px 0px 0px #000000;
+  }
+}
+
+/* Neo-Brutalism Tactile Button Press */
+.neo-btn {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  box-shadow: 2.5px 2.5px 0px 0px #0f172a;
+}
+.neo-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3.5px 3.5px 0px 0px #0f172a;
+}
+.neo-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0.5px 0.5px 0px 0px #0f172a;
+}
+
+:where(.dark, .dark *) .neo-btn {
+  box-shadow: 2.5px 2.5px 0px 0px #000000;
+}
+:where(.dark, .dark *) .neo-btn:hover {
+  box-shadow: 3.5px 3.5px 0px 0px #000000;
+}
+:where(.dark, .dark *) .neo-btn:active {
+  box-shadow: 0.5px 0.5px 0px 0px #000000;
+}
+
+/* Typography Classes */
+.font-hanzi {
+  font-family: 'Noto Sans SC', "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.font-thai {
+  font-family: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 3D Transform Utilities for Flashcard Flip */
 .perspective-1000 {
   perspective: 1000px;
 }
@@ -28,8 +129,8 @@
 
 /* Smooth custom scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -45,7 +146,16 @@
   background: rgba(156, 163, 175, 0.5);
 }
 
-/* Chinese character specialized font styling */
-.font-hanzi {
-  font-family: 'Noto Sans SC', "PingFang SC", "Microsoft YaHei", sans-serif;
+/* Smooth native touch scrolling */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbar for clean horizontal snap scroll */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

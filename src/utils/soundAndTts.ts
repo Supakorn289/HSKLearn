@@ -32,6 +32,9 @@ export function speakChinese(text: string, rate: number = 1.0): Promise<void> {
 
     try {
       window.speechSynthesis.cancel(); // Stop ongoing speech
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'zh-CN';

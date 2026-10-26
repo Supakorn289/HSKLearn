@@ -46,6 +46,7 @@ interface AppState {
   showToast: (msg: string) => void;
   clearToast: () => void;
   importDatabaseJson: (jsonData: string) => { success: boolean; count?: number; error?: string };
+  loadFullVocabDirectly: () => Promise<{ success: boolean; count?: number; error?: string }>;
   exportBackupJson: () => string;
   resetToDefault: () => void;
   getWordById: (id: string) => VocabWord | undefined;
@@ -115,6 +116,22 @@ function getDaysDifference(d1: string, d2: string): number {
   return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
+// Helper to pick unique distractors
+function getUniqueDistractors<T>(items: T[], count: number, isDuplicate: (item: T) => boolean, mapper: (item: T) => string): string[] {
+  const result: string[] = [];
+  const shuffled = [...items].sort(() => 0.5 - Math.random());
+  for (const item of shuffled) {
+    if (!isDuplicate(item)) {
+      const val = mapper(item);
+      if (!result.includes(val)) {
+        result.push(val);
+        if (result.length === count) break;
+      }
+    }
+  }
+  return result;
+}
+
 // Generator for 3 Daily Quiz Questions based on learned words
 function generateQuizQuestions(
   words: VocabWord[],
@@ -123,11 +140,11 @@ function generateQuizQuestions(
   const questions: QuizQuestion[] = [];
   if (words.length === 0) return [];
 
-  // Question 1: Antonym or Spectrum matching
-  const wordWithRelation = words.find(w => w.relatedWords && w.relatedWords.length > 0) || words[0];
-  const relation = wordWithRelation.relatedWords?.[0];
+  // Question 1: Antonym or Spectrum matching (or Pinyin Pronunciation fallback if no relation exists)
+  const wordWithRelation = words.find(w => w.relatedWords && w.relatedWords.length > 0) || allWords.find(w => w.relatedWords && w.relatedWords.length > 0);
+  const relation = wordWithRelation?.relatedWords?.[0];
 
-  if (relation) {
+  if (wordWithRelation && relation) {
     const targetWord = allWords.find(w => w.id === relation.targetWordId);
     if (targetWord) {
       const isAntonym = relation.relationType === 'ANTONYM';
@@ -135,14 +152,14 @@ function generateQuizQuestions(
         ? `คำตรงข้ามของ 「${wordWithRelation.hanzi}」 (${wordWithRelation.pinyin} - ${wordWithRelation.thaiMeaning}) คือคำใด?`
         : `คำที่อยู่ในกลุ่ม/สเกลเดียวกับ 「${wordWithRelation.hanzi}」 (${relation.relationLabelThai}) คือคำใด?`;
 
-      // Distractors
-      const distractors = allWords
-        .filter(w => w.id !== targetWord.id && w.id !== wordWithRelation.id)
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 3)
-        .map(w => `${w.hanzi} (${w.pinyin} - ${w.thaiMeaning})`);
-
       const correctStr = `${targetWord.hanzi} (${targetWord.pinyin} - ${targetWord.thaiMeaning})`;
+      const distractors = getUniqueDistractors(
+        allWords,
+        3,
+        w => w.id === targetWord.id || w.id === wordWithRelation.id,
+        w => `${w.hanzi} (${w.pinyin} - ${w.thaiMeaning})`
+      );
+
       const options = [...distractors, correctStr].sort(() => 0.5 - Math.random());
 
       questions.push({
@@ -157,15 +174,40 @@ function generateQuizQuestions(
     }
   }
 
-  // Question 2: Meaning Choice from another word
-  const secondWord = words[1 % words.length];
+  // Fallback for Question 1 if still empty: Test Pinyin pronunciation of first word
+  if (questions.length === 0) {
+    const firstWord = words[0];
+    const prompt1 = `เสียงอ่านพินอิน (Pinyin) ที่ถูกต้องของคำศัพท์ 「${firstWord.hanzi}」 (${firstWord.thaiMeaning}) คือข้อใด?`;
+    const correctStr1 = firstWord.pinyin;
+    const distractors1 = getUniqueDistractors(
+      allWords,
+      3,
+      w => w.id === firstWord.id || w.pinyin === firstWord.pinyin,
+      w => w.pinyin
+    );
+    const options1 = [...distractors1, correctStr1].sort(() => 0.5 - Math.random());
+
+    questions.push({
+      id: 'quiz_q1_pinyin_' + Date.now(),
+      type: 'MEANING_CHOICE',
+      prompt: prompt1,
+      options: options1,
+      correctAnswer: correctStr1,
+      explanation: `「${firstWord.hanzi}」 ออกเสียงพินอินว่า "${firstWord.pinyin}" แปลว่า "${firstWord.thaiMeaning}"`,
+      targetWordHanzi: firstWord.hanzi
+    });
+  }
+
+  // Question 2: Meaning Choice from second word
+  const secondWord = words[1 % words.length] || words[0];
   const prompt2 = `คำศัพท์ 「${secondWord.hanzi}」 (${secondWord.pinyin}) แปลว่าอะไร?`;
-  const distractors2 = allWords
-    .filter(w => w.id !== secondWord.id)
-    .sort(() => 0.5 - Math.random())
-    .slice(0, 3)
-    .map(w => w.thaiMeaning);
   const correctStr2 = secondWord.thaiMeaning;
+  const distractors2 = getUniqueDistractors(
+    allWords,
+    3,
+    w => w.id === secondWord.id || w.thaiMeaning === secondWord.thaiMeaning,
+    w => w.thaiMeaning
+  );
   const options2 = [...distractors2, correctStr2].sort(() => 0.5 - Math.random());
 
   questions.push({
@@ -183,12 +225,13 @@ function generateQuizQuestions(
   const sentenceWithBlank = thirdWord.example.hanzi.replace(thirdWord.hanzi, ' ______ ');
   const prompt3 = `เลือกคำศัพท์ที่ถูกต้องเติมลงในช่องว่าง:`;
   const questionDetail3 = `"${sentenceWithBlank}" (${thirdWord.example.thai})`;
-  const distractors3 = allWords
-    .filter(w => w.id !== thirdWord.id)
-    .sort(() => 0.5 - Math.random())
-    .slice(0, 3)
-    .map(w => `${w.hanzi} (${w.pinyin})`);
   const correctStr3 = `${thirdWord.hanzi} (${thirdWord.pinyin})`;
+  const distractors3 = getUniqueDistractors(
+    allWords,
+    3,
+    w => w.id === thirdWord.id || w.hanzi === thirdWord.hanzi,
+    w => `${w.hanzi} (${w.pinyin})`
+  );
   const options3 = [...distractors3, correctStr3].sort(() => 0.5 - Math.random());
 
   questions.push({
@@ -270,8 +313,25 @@ export const useAppStore = create<AppState>()(
         const { vocabDatabase, stats, currentSession, currentSimulatedDate, showToast } = get();
         const targetDate = forceDate || currentSimulatedDate || getLocalDateString();
 
-        // If today's session is already generated and matches the date, keep it
+        // If today's session is already generated and matches the date, ensure quiz questions exist
         if (currentSession && currentSession.date === targetDate) {
+          if (!get().quizQuestions || get().quizQuestions.length === 0) {
+            const sessionWords: VocabWord[] = [];
+            Object.values(currentSession.tasks).forEach((task) => {
+              const mainWord = vocabDatabase.find((w) => w.id === task.mainWordId);
+              if (mainWord && !sessionWords.some((w) => w.id === mainWord.id)) {
+                sessionWords.push(mainWord);
+              }
+              (task.linkedWordIds || []).forEach((id) => {
+                const linkedWord = vocabDatabase.find((w) => w.id === id);
+                if (linkedWord && !sessionWords.some((w) => w.id === linkedWord.id)) {
+                  sessionWords.push(linkedWord);
+                }
+              });
+            });
+            const quiz = generateQuizQuestions(sessionWords, vocabDatabase);
+            set({ quizQuestions: quiz });
+          }
           return;
         }
 
@@ -559,7 +619,7 @@ export const useAppStore = create<AppState>()(
               wordsLearned: record.wordsLearned || 3,
               status: 'COMPLETED',
               statusLabel: `สำเร็จ: เรียน ${record.wordsLearned || 3} คำ`,
-              fillColor: '#6366f1', // indigo-500
+              fillColor: '#10b981', // emerald-500 matching the legend
               isToday: false
             });
           } else if (record?.shieldUsed) {
@@ -633,26 +693,67 @@ export const useAppStore = create<AppState>()(
       importDatabaseJson: (jsonData: string) => {
         try {
           const parsed = JSON.parse(jsonData);
-          if (!Array.isArray(parsed)) {
-            return { success: false, error: 'ข้อมูล JSON ต้องเป็น Array ของ VocabWord' };
+          let wordsToImport: VocabWord[] = [];
+          let statsToImport: Partial<UserStats> | null = null;
+
+          if (Array.isArray(parsed)) {
+            // Raw array format (e.g. full_vocab.json)
+            wordsToImport = parsed;
+          } else if (parsed && typeof parsed === 'object') {
+            // Backup object format
+            if (Array.isArray(parsed.vocabDatabase)) {
+              wordsToImport = parsed.vocabDatabase;
+            }
+            if (parsed.stats && typeof parsed.stats === 'object') {
+              statsToImport = parsed.stats;
+            }
           }
-          // Validate required fields on sample
-          const isValid = parsed.every(w => w.id && w.hanzi && w.pinyin && w.thaiMeaning && w.hskLevel);
+
+          if (wordsToImport.length === 0) {
+            return { success: false, error: 'ไม่พบรายการคำศัพท์ที่ถูกต้องในไฟล์ JSON' };
+          }
+
+          // Validate required fields on sample/all
+          const isValid = wordsToImport.every(w => w.id && w.hanzi && w.pinyin && w.thaiMeaning && w.hskLevel);
           if (!isValid) {
             return { success: false, error: 'รูปแบบข้อมูลไม่ถูกต้อง ขาด id, hanzi, pinyin หรือ thaiMeaning' };
           }
 
           // Merge by ID
           const currentMap = new Map(get().vocabDatabase.map(w => [w.id, w]));
-          parsed.forEach(w => currentMap.set(w.id, w));
+          wordsToImport.forEach(w => currentMap.set(w.id, w));
           const merged = Array.from(currentMap.values());
 
-          set({ vocabDatabase: merged });
-          get().showToast(`นำเข้าคำศัพท์สำเร็จ! ทั้งหมด ${merged.length} คำ`);
+          const updates: any = { vocabDatabase: merged };
+          if (statsToImport) {
+            updates.stats = {
+              ...get().stats,
+              ...statsToImport,
+            };
+          }
+
+          set(updates);
+          get().initDailySession();
+          get().showToast(`นำเข้าคำศัพท์สำเร็จ! ทั้งหมด ${merged.length} คำ` + (statsToImport ? ' พร้อมกู้คืนสถิติแล้ว' : ''));
           return { success: true, count: merged.length };
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Invalid JSON';
           return { success: false, error: message };
+        }
+      },
+
+      loadFullVocabDirectly: async () => {
+        try {
+          const res = await fetch('/full_vocab.json');
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ไม่สามารถดึงไฟล์ full_vocab.json ได้`);
+          }
+          const text = await res.text();
+          return get().importDatabaseJson(text);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดคลังคำศัพท์';
+          get().showToast(`❌ ${msg}`);
+          return { success: false, error: msg };
         }
       },
 
@@ -694,6 +795,7 @@ export const useAppStore = create<AppState>()(
         vocabDatabase: state.vocabDatabase,
         stats: state.stats,
         currentSession: state.currentSession,
+        quizQuestions: state.quizQuestions,
         currentSimulatedDate: state.currentSimulatedDate,
         isDarkMode: state.isDarkMode
       })
