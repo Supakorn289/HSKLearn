@@ -1,0 +1,8 @@
+{
+  "name": "Remix HSK Daily Stack (A-Z)",
+  "description": "Learn HSK 3.0 Chinese vocabulary daily with A-Z progression, semantic antonym \u0026 spectrum clusters, interactive 3D flashcards, and gamified streak stacks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
